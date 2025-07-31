@@ -13,16 +13,15 @@
 // limitations under the License.
 
 import * as vscode from "vscode";
-
-import { IBazelCommandAdapter } from "../bazel/bazel_command";
 import { BazelWorkspaceInfo } from "../bazel/bazel_workspace_info";
 import { getDefaultBazelExecutablePath } from "./configuration";
-import { getBazelPackageFile } from "../bazel/bazel_utils";
+import { findTargetsForFile } from "../bazel/bazel_utils";
 import {
   queryQuickPickTargets,
   queryQuickPickPackage,
 } from "../bazel/bazel_quickpick";
 import { createBazelTask } from "../bazel/tasks";
+import { IBazelCommandAdapter } from "../bazel/bazel_command";
 
 /**
  * Builds a Bazel target and streams output to the terminal.
@@ -317,18 +316,44 @@ async function bazelJumpToBuildFile() {
   }
 
   const filePath = currentEditor.document.uri.fsPath;
-  const buildFilePath = getBazelPackageFile(filePath);
-  if (!buildFilePath) {
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    vscode.window.showInformationMessage(
-      "No BUILD or BUILD.bazel file found in any parent directory.",
-    );
-    return;
-  }
 
-  // Open the BUILD file
-  // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  await vscode.window.showTextDocument(vscode.Uri.file(buildFilePath));
+  try {
+    // First try to find specific targets for this file
+    const targetLocations = await findTargetsForFile(filePath);
+
+    if (targetLocations.length > 0) {
+      // Open the first target at the exact position
+      const target = targetLocations[0];
+      const targetDoc = await vscode.workspace.openTextDocument(target.file);
+      await vscode.window.showTextDocument(targetDoc, {
+        selection: new vscode.Range(
+          target.line,
+          target.column,
+          target.line,
+          target.column,
+        ),
+      });
+      return;
+    }
+
+    // Fall back to just opening the BUILD file if no targets found
+    const buildFile = getBazelPackageFile(filePath);
+    if (!buildFile) {
+      void vscode.window.showInformationMessage(
+        "No BUILD or BUILD.bazel file found in any parent directory.",
+      );
+      return;
+    }
+
+    const document = await vscode.workspace.openTextDocument(buildFile);
+    await vscode.window.showTextDocument(document);
+  } catch (error) {
+    const outputChannel = vscode.window.createOutputChannel("Bazel");
+    outputChannel.appendLine(
+      `Error jumping to BUILD file: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    outputChannel.show();
+  }
 }
 
 /**

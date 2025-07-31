@@ -17,6 +17,8 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { blaze_query } from "../protos";
 import { BazelQuery } from "./bazel_query";
+import { BazelWorkspaceInfo } from "./bazel_workspace_info";
+import { getDefaultBazelExecutablePath } from "../extension/configuration";
 
 /**
  * Get the package label for a build file.
@@ -173,6 +175,76 @@ export function getBazelPackageFile(fsPath: string): string | undefined {
     return undefined; // Build file is outside the workspace
   }
   return buildFile;
+}
+
+interface TargetLocation {
+  file: string;
+  line: number;
+  column: number;
+}
+
+/**
+ * Finds all targets in the same package that directly depend on the given file.
+ * @param filePath The absolute path to the file
+ * @returns A promise that resolves to an array of target locations
+ */
+export async function findTargetsForFile(
+  filePath: string,
+): Promise<TargetLocation[]> {
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(
+    vscode.Uri.file(filePath),
+  );
+  if (!workspaceFolder) {
+    return [];
+  }
+
+  const workspaceInfo = BazelWorkspaceInfo.fromWorkspaceFolder(workspaceFolder);
+  if (!workspaceInfo) {
+    return [];
+  }
+
+  try {
+    const bazelPath = getDefaultBazelExecutablePath();
+    const fileRelativePath = path.relative(
+      workspaceInfo.bazelWorkspacePath,
+      filePath,
+    );
+
+    const bazelQuery = new BazelQuery(
+      bazelPath,
+      workspaceInfo.bazelWorkspacePath,
+    );
+    const query = `same_pkg_direct_rdeps('${fileRelativePath}')`;
+    const result = await bazelQuery.queryTargets(query, {
+      ignoresErrors: true,
+    });
+
+    return result.target
+      .filter((target) => target.rule?.location)
+      .map((target) => {
+        // The location is in format: path/to/BUILD:line:column: target_name rule_type
+        const location = target.rule?.location;
+        if (!location) return null;
+
+        const match = location.match(/^(.*?):(\d+):(\d+):/);
+        if (!match) return null;
+
+        const [, file, line, column] = match;
+        return {
+          file: path.resolve(workspaceInfo.bazelWorkspacePath, file),
+          line: parseInt(line, 10) - 1, // Convert to 0-based
+          column: parseInt(column, 10) - 1, // Convert to 0-based
+        };
+      })
+      .filter((loc): loc is TargetLocation => loc !== null);
+  } catch (error) {
+    // Use the output channel for errors
+    const outputChannel = vscode.window.createOutputChannel("Bazel");
+    outputChannel.appendLine(
+      `Error finding targets for file: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return [];
+  }
 }
 
 /**
