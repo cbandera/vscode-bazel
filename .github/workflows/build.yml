@@ -33,6 +33,9 @@ jobs:
       - name: Check formatting
         run: npm run format-check
 
+      - name: Check for trojan source attacks (invisible Unicode characters)
+        run: npm run check-trojan-source
+
       # Has to happen before `check-lint`, because we need the generated protobuf types
       - name: Compile the extension
         run: npm run compile
