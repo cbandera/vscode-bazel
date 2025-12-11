@@ -29,28 +29,13 @@ const workspacePath = path.join(
 
 describe("buildifier", () => {
   it("diagnostics are added from buildifier", async () => {
-
     // Promise that resolves when diagnostics are added to the file.
-    const diagnosticsPromise = new Promise<vscode.Diagnostic[]>(
-      (resolve, reject) => {
-        const timeout = setTimeout(() => {
-          disposable.dispose();
-          reject(new Error("Timed out waiting for diagnostics"));
-        }, 5000);
-
-        const disposable = vscode.languages.onDidChangeDiagnostics((e) => {
-          if (!e.uris.some((u) => u.toString() === uri.toString())) {
-            return;
-          }
-          const diags = vscode.languages.getDiagnostics(uri);
-          if (diags.length > 0) {
-            clearTimeout(timeout);
-            disposable.dispose();
-            resolve(diags);
-          }
-        });
-      },
-    );
+    const diagnosticsPromise = new Promise<vscode.Diagnostic[]>((resolve) => {
+      const listener = vscode.languages.onDidChangeDiagnostics(() => {
+        listener.dispose();
+        resolve(vscode.languages.getDiagnostics(uri));
+      });
+    });
 
     // Create DiagnosticsManager and open file
     const buildFile = path.join(workspacePath, "buildifier", "BUILD");
