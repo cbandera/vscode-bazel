@@ -32,9 +32,11 @@ import { BazelWorkspaceTreeProvider } from "../workspace-tree";
 import { activateCommandVariables } from "./command_variables";
 import { activateTesting } from "../test-explorer";
 import { activateWrapperCommands } from "./bazel_wrapper_commands";
+import { Logger } from "./logger";
 
 // Global reference to the workspace tree provider for testing
 export let _workspaceTreeProvider: BazelWorkspaceTreeProvider;
+let _logger: Logger;
 
 /**
  * Called when the extension is activated; that is, when its first command is
@@ -43,6 +45,14 @@ export let _workspaceTreeProvider: BazelWorkspaceTreeProvider;
  * @param context The extension context.
  */
 export async function activate(context: vscode.ExtensionContext) {
+  // Initialize Logger and showOutput command
+  _logger = new Logger("Bazel");
+  context.subscriptions.push(
+    vscode.commands.registerCommand("bazel.showOutput", () => {
+      Logger.show();
+    }),
+  );
+
   // Initialize the workspace tree provider
   _workspaceTreeProvider =
     BazelWorkspaceTreeProvider.fromExtensionContext(context);
@@ -180,11 +190,15 @@ export async function activate(context: vscode.ExtensionContext) {
   // Targets" tree view.
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
   checkBuildifierIsAvailable();
+
+  _logger.info("Bazel extension activated");
 }
 
 /** Called when the extension is deactivated. */
 export function deactivate() {
   // Nothing to do here.
+  _logger.info("Bazel extension deactivated");
+  Logger.disposeAll();
 }
 
 function createLsp(config: vscode.WorkspaceConfiguration) {
