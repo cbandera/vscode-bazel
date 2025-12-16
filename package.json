@@ -115,6 +115,10 @@
                 "command": "bazel.lsp.restart",
                 "title": "Restart language server",
                 "when": "bazel.lsp.enabled"
+            },
+            {
+                "command": "bazel.showOutput",
+                "title": "Bazel: Show Output"
             }
         ],
         "configuration": {
