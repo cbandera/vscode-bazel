@@ -68,7 +68,7 @@ describe("BazelBuildCodeLensProvider", () => {
   } as vscode.ExtensionContext;
 
   beforeEach(() => {
-    provider = new BazelBuildCodeLensProvider(mockContext);
+    provider = new BazelBuildCodeLensProvider(mockContext.subscriptions);
   });
 
   it("generates correct code lenses for all target types & edge cases", () => {

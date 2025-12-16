@@ -19,6 +19,8 @@ import { getTargetsForBuildFile } from "../bazel";
 import { getDefaultBazelExecutablePath } from "../extension/configuration";
 import { blaze_query } from "../protos";
 import { CodeLensCommandAdapter } from "./code_lens_command_adapter";
+import { BaseExtensionFeature } from "../extension/extension_feature";
+import { checkBazelIsAvailable } from "../bazel/bazel_availability";
 
 /**
  * Groups of Bazel targets organized by the actions they support.
@@ -37,6 +39,34 @@ interface ActionGroups {
   run: string[];
 }
 
+export class CodeLensFeature extends BaseExtensionFeature {
+  constructor(context: vscode.ExtensionContext) {
+    super("CodeLens", context);
+  }
+
+  enable(context: vscode.ExtensionContext): boolean {
+    // Precondition: must be in a Bazel workspace
+    if (!BazelWorkspaceInfo.fromWorkspaceFolders()) {
+      this.logger.warn("Can not activate, no Bazel workspace found.");
+      return false;
+    }
+    // Precondition: bazel executable available
+    if (!checkBazelIsAvailable(this.logger)) {
+      this.logger.warn("Can not activate, no bazel executable found.");
+      return false;
+    }
+
+    // Create and register the CodeLens provider
+    const codelensProvider = new BazelBuildCodeLensProvider(this.disposables);
+    const codeLensRegistration = vscode.languages.registerCodeLensProvider(
+      [{ pattern: "**/BUILD" }, { pattern: "**/BUILD.bazel" }],
+      codelensProvider,
+    );
+    this.disposables.push(codeLensRegistration);
+    return true;
+  }
+}
+
 /** Provides CodeLenses for targets in Bazel BUILD files. */
 export class BazelBuildCodeLensProvider implements vscode.CodeLensProvider {
   public onDidChangeCodeLenses: vscode.Event<void>;
@@ -49,7 +79,7 @@ export class BazelBuildCodeLensProvider implements vscode.CodeLensProvider {
    *
    * @param context The VS Code extension context.
    */
-  constructor(private context: vscode.ExtensionContext) {
+  constructor(private disposables: vscode.Disposable[]) {
     this.onDidChangeCodeLenses = this.onDidChangeCodeLensesEmitter.event;
 
     const buildWatcher = vscode.workspace.createFileSystemWatcher(
@@ -63,14 +93,8 @@ export class BazelBuildCodeLensProvider implements vscode.CodeLensProvider {
         this.onDidChangeCodeLensesEmitter.fire();
       },
       this,
-      context.subscriptions,
+      this.disposables,
     );
-
-    vscode.workspace.onDidChangeConfiguration((change) => {
-      if (change.affectsConfiguration("bazel.enableCodeLens")) {
-        this.onDidChangeCodeLensesEmitter.fire();
-      }
-    });
   }
 
   /**
@@ -83,12 +107,6 @@ export class BazelBuildCodeLensProvider implements vscode.CodeLensProvider {
   public async provideCodeLenses(
     document: vscode.TextDocument,
   ): Promise<vscode.CodeLens[]> {
-    const bazelConfig = vscode.workspace.getConfiguration("bazel");
-    const enableCodeLens = bazelConfig.get<boolean>("enableCodeLens");
-    if (!enableCodeLens) {
-      return [];
-    }
-
     if (document.isDirty) {
       // Don't show code lenses for dirty BUILD files; we can't reliably
       // determine what the build targets in it are until it is saved and we can
