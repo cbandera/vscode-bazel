@@ -21,7 +21,7 @@ import {
   BuildifierFormatProvider,
   checkBuildifierIsAvailable,
 } from "../buildifier";
-import { CodeLensFeature } from "../codelens/bazel_build_code_lens_provider";
+import { CodeLensFeature } from "../codelens/code_lens_feature";
 import { BazelCompletionItemProvider } from "../completion-provider";
 import {
   BazelGotoDefinitionProvider,
