@@ -18,6 +18,7 @@ import { BazelWorkspaceInfo } from "../bazel";
 import { getTargetsForBuildFile } from "../bazel";
 import { getDefaultBazelExecutablePath } from "../extension/configuration";
 import { CodeLensBuilder } from "./code_lens_builder";
+import { Logger } from "../extension/logger";
 
 /**
  * Provides CodeLenses for targets in Bazel BUILD files.
@@ -36,7 +37,7 @@ export class CodeLensProvider implements vscode.CodeLensProvider {
   /**
    * Initializes a new CodeLens provider.
    */
-  constructor() {
+  constructor(private readonly logger: Logger) {
     this.onDidChangeCodeLenses = this.onDidChangeCodeLensesEmitter.event;
     this.builder = new CodeLensBuilder();
   }
@@ -75,9 +76,9 @@ export class CodeLensProvider implements vscode.CodeLensProvider {
       getDefaultBazelExecutablePath(),
       workspaceInfo.bazelWorkspacePath,
       document.uri.fsPath,
+      this.logger,
     ).catch((error) => {
-      // eslint-disable-next-line no-console
-      console.error("Error getting targets for build file:", error);
+      this.logger.error(`Error getting targets for build file: ${error}`);
       return undefined;
     });
 

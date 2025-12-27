@@ -7,6 +7,7 @@ import { CodeLensProvider } from "../src/codelens/code_lens_provider";
 import { BazelWorkspaceInfo } from "../src/bazel";
 import { CodeLensBuilder } from "../src/codelens/code_lens_builder";
 import { blaze_query } from "../src/protos";
+import { Logger } from "../src/extension/logger";
 
 describe("CodeLensProvider", () => {
   let provider: CodeLensProvider;
@@ -67,7 +68,7 @@ describe("CodeLensProvider", () => {
       .callsFake(mockCodeLensBuilder.buildCodeLenses as any);
 
     // Create the provider after common stubs are in place
-    provider = new CodeLensProvider();
+    provider = new CodeLensProvider(new Logger("dummy"));
   });
 
   afterEach(() => {

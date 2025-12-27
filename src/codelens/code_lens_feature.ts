@@ -33,7 +33,7 @@ export class CodeLensFeature extends BaseExtensionFeature {
     }
 
     // Create and register the CodeLens provider
-    const codelensProvider = new CodeLensProvider();
+    const codelensProvider = new CodeLensProvider(this.logger);
 
     // Set up file watcher for BUILD files
     const buildWatcher = vscode.workspace.createFileSystemWatcher(

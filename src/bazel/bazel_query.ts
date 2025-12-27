@@ -149,8 +149,7 @@ export class BazelQuery extends BazelCommand {
       ]);
     }
     return new Promise<Buffer>((resolve, reject) => {
-      // eslint-disable-next-line no-console
-      console.debug(
+      this.logger.debug(
         `Running Bazel query with command line: ${this.bazelExecutable} ${this.execArgs(
           options,
           additionalStartupOptions,

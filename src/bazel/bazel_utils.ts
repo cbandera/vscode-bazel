@@ -17,6 +17,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { blaze_query } from "../protos";
 import { BazelQuery } from "./bazel_query";
+import { Logger } from "../extension/logger";
 
 /**
  * Get the package label for a build file.
@@ -56,11 +57,14 @@ export async function getTargetsForBuildFile(
   bazelExecutable: string,
   workspace: string,
   buildFile: string,
+  logger: Logger = undefined,
 ): Promise<blaze_query.QueryResult> {
   const pkg = getPackageLabelForBuildFile(workspace, buildFile);
   const queryResult = await new BazelQuery(
     bazelExecutable,
     workspace,
+    [],
+    logger,
   ).queryTargets(`kind(rule, ${pkg}:all)`, { sortByRuleName: true });
 
   return queryResult;

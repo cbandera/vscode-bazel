@@ -14,6 +14,7 @@
 
 import * as vscode from "vscode";
 import { BazelWorkspaceInfo } from "./bazel_workspace_info";
+import { Logger } from "../extension/logger";
 
 /**
  * Arbitrary types should implement this interface to specify how a task should
@@ -53,11 +54,13 @@ export abstract class BazelCommand {
    * spawned.
    * @param options Command line options that will be passed to Bazel (targets,
    * query strings, flags, etc.).
+   * @param logger Logger to use for logging.
    */
   public constructor(
     readonly bazelExecutable: string,
     readonly workingDirectory: string,
     readonly options: string[] = [],
+    readonly logger: Logger = new Logger("unnamed"),
   ) {}
 
   /**
