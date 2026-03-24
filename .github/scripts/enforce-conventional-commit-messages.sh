@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to check if commit messages follow the Conventional Commit format
+# Script to check if commit messages and PR title follow the Conventional Commit format
 # Usage: .github/scripts/enforce-conventional-commit-messages.sh [base_ref] [head_ref]
 # If no arguments provided, checks commits in current PR (for GitHub Actions)
 
@@ -42,9 +42,20 @@ while IFS= read -r commit; do
   fi
 done <<< "$COMMITS"
 
+# Check PR title if we're in a PR context
+if [[ ! "$PR_TITLE" =~ $PATTERN ]]; then
+  echo "❌ Invalid PR title: '$PR_TITLE'"
+  INVALID_FOUND=true
+else
+  echo "✅ Valid PR title: '$PR_TITLE'"
+fi
+
+# Final validation and exit
 if [ "$INVALID_FOUND" = true ]; then
   echo ""
-  echo "❌ Commit messages must follow the Conventional Commit format:"
+  echo "❌ Validation failed!"
+  echo ""
+  echo "Commit messages and PR title must follow the Conventional Commit format:"
   echo "  <type>[optional scope][!]: <description>"
   echo ""
   echo "Examples:"
@@ -62,5 +73,5 @@ if [ "$INVALID_FOUND" = true ]; then
   exit 1
 else
   echo ""
-  echo "✅ All commit messages follow the Conventional Commit format!"
+  echo "✅ All commit messages and PR title follow the Conventional Commit format!"
 fi

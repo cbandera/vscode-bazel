@@ -27,6 +27,8 @@ jobs:
 
       - name: Enforce conventional commit messages
         if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: ./.github/scripts/enforce-conventional-commit-messages.sh
 
       - name: Install Node.js
