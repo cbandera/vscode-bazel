@@ -25,7 +25,7 @@ import {
   BazelWorkspaceInfo,
   QueryLocation,
   canonicalizeLabel,
-  getPackageLabelForBuildFile,
+  getPackageLabelForFile,
 } from "../bazel";
 import { getBazelExecutablePath } from "../extension/configuration";
 import { blaze_query } from "../protos";
@@ -101,7 +101,7 @@ export class BazelGotoDefinitionProvider implements DefinitionProvider {
     const range = document.getWordRangeAtPosition(position, LABEL_REGEX);
     const targetText = document.getText(range);
 
-    const packageLabel = getPackageLabelForBuildFile(
+    const packageLabel = await getPackageLabelForFile(
       workspaceInfo.bazelWorkspacePath,
       document.uri.fsPath,
     );

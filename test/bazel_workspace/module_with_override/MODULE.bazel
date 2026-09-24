@@ -1,0 +1,7 @@
+module(name = "root_mod", version = "0.0.0")
+
+bazel_dep(name = "overridden_mod")
+local_path_override(
+    module_name = "overridden_mod",
+    path = "../overridden_mod_target",
+)

@@ -25,7 +25,7 @@ import {
   getBazelPackageFile,
   getBazelWorkspaceFolder,
   getBuildFileLineWithSourceFilePath,
-  getPackageLabelForBuildFile,
+  getPackageLabelForFile,
   getTargetNameAtBuildFileLocation,
   notifyIfForeignFile,
 } from "./bazel_utils";
@@ -118,10 +118,10 @@ async function pickBazelWorkspace(): Promise<BazelWorkspaceInfo | undefined> {
  * Guesses the label of interest for the current active editor file and cursor position.
  * Returns undefined if not possible to determine.
  */
-export function guessLabelOfInterest(
+export async function guessLabelOfInterest(
   currentFilePath: string | undefined,
   currentLine: number | undefined,
-): string | undefined {
+): Promise<string | undefined> {
   // Do we have a file path?
   if (!currentFilePath) {
     return undefined;
@@ -138,7 +138,7 @@ export function guessLabelOfInterest(
   if (!buildFile) {
     return undefined;
   }
-  const packageLabel = getPackageLabelForBuildFile(workspaceFolder, buildFile);
+  const packageLabel = await getPackageLabelForFile(workspaceFolder, buildFile);
 
   // Can we find the relevant line inside the BUILD file?
   let lineOfInterest: number | undefined = undefined;
@@ -258,7 +258,7 @@ export async function queryQuickPickPackage({
  * @param options.workspaceInfo Workspace information for the Bazel project
  * @returns A promise that resolves with the selected BazelTargetQuickPick, or undefined if no selection was made
  */
-export function showDynamicQuickPick({
+export async function showDynamicQuickPick({
   queryBuilder,
   queryFunctor,
   workspaceInfo,
@@ -280,7 +280,7 @@ export function showDynamicQuickPick({
   if (activeDocument?.uri.scheme === "file") {
     notifyIfForeignFile(activeDocument.uri.fsPath);
   }
-  const guessedLabelOfInterest = guessLabelOfInterest(
+  const guessedLabelOfInterest = await guessLabelOfInterest(
     activeDocument?.uri.fsPath,
     vscode.window.activeTextEditor?.selection.active.line,
   );

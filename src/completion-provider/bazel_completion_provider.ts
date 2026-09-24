@@ -16,7 +16,7 @@ import * as vscode from "vscode";
 import {
   BazelWorkspaceInfo,
   canonicalizeLabel,
-  getPackageLabelForBuildFile,
+  getPackageLabelForFile,
   queryQuickPickTargets,
 } from "../bazel";
 import { logDebug } from "../extension/logger";
@@ -73,10 +73,10 @@ function getNextPackage(target: string) {
   return undefined;
 }
 
-function getAbsoluteLabel(
+async function getAbsoluteLabel(
   target: string,
   document: vscode.TextDocument,
-): string {
+): Promise<string> {
   if (target.startsWith("//") || target.startsWith("@")) {
     return target;
   }
@@ -84,7 +84,7 @@ function getAbsoluteLabel(
   if (!workspace) {
     return target;
   }
-  const packageLabel = getPackageLabelForBuildFile(
+  const packageLabel = await getPackageLabelForFile(
     workspace.bazelWorkspacePath,
     document.uri.fsPath,
   );
@@ -101,7 +101,7 @@ export class BazelCompletionItemProvider
    *
    * Only label started with `//` or `:` is supported at the moment.
    */
-  public provideCompletionItems(
+  public async provideCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position,
   ) {
@@ -120,7 +120,7 @@ export class BazelCompletionItemProvider
     const workspaceTargets =
       this.targetsMap.get(workspace.bazelWorkspacePath) || [];
 
-    candidateTarget = getAbsoluteLabel(candidateTarget, document);
+    candidateTarget = await getAbsoluteLabel(candidateTarget, document);
 
     if (!candidateTarget.endsWith("/") && !candidateTarget.endsWith(":")) {
       candidateTarget = stripLastPackageOrTargetName(candidateTarget);

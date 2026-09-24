@@ -62,8 +62,8 @@ describe("Quickpick: guessLabelOfInterest", () => {
   ];
 
   testCases.forEach(({ name, currentFilePath, currentLine, expectedLabel }) => {
-    it(name, () => {
-      const result = guessLabelOfInterest(currentFilePath, currentLine);
+    it(name, async () => {
+      const result = await guessLabelOfInterest(currentFilePath, currentLine);
       assert.strictEqual(result, expectedLabel);
     });
   });
