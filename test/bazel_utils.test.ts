@@ -9,8 +9,10 @@ import {
   getTargetNameAtBuildFileLocation,
   getBazelWorkspaceFolder,
   getBazelWorkspaceRelativePath,
+  getPackageLabelForFile,
   canonicalizeLabel,
 } from "../src/bazel/bazel_utils";
+import * as bazelRepoMapping from "../src/bazel/bazel_repo_mapping";
 
 const workspacePath = path.join(
   __dirname,
@@ -345,5 +347,39 @@ describe("Bazel Utils: canonicalizeLabel", () => {
 
   it("resolves a bare label against the root package", () => {
     assert.strictEqual(canonicalizeLabel("client.py", "//"), "//:client.py");
+  });
+});
+
+describe("Bazel Utils: getPackageLabelForFile", () => {
+  let sandbox: sinon.SinonSandbox;
+
+  beforeEach(() => {
+    sandbox = sinon.createSandbox();
+  });
+
+  afterEach(() => {
+    sandbox.restore();
+  });
+
+  it("falls back to the plain label with no external mapping", async () => {
+    sandbox.stub(bazelRepoMapping, "getRepoMapping").resolves([]);
+
+    const buildFile = path.join(packagePath, "BUILD");
+    assert.strictEqual(
+      await getPackageLabelForFile(workspacePath, buildFile),
+      "//pkg2/sub-pkg",
+    );
+  });
+
+  it("uses the mapping for a file inside a mapped module", async () => {
+    const buildFile = path.join(packagePath, "BUILD");
+    sandbox
+      .stub(bazelRepoMapping, "getRepoMapping")
+      .resolves([{ canonicalName: "nested_mod+", localPath: packagePath }]);
+
+    assert.strictEqual(
+      await getPackageLabelForFile(workspacePath, buildFile),
+      "@@nested_mod+//",
+    );
   });
 });

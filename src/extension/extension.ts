@@ -27,6 +27,7 @@ import { TestExplorerFeature } from "../test-explorer";
 import { activateWrapperCommands } from "./bazel_wrapper_commands";
 import { registerLogger, logInfo, logError, showOutputChannel } from "./logger";
 import { registerBazelWorkspaceAvailabilityWatcher } from "../bazel/bazel_availability";
+import { registerRepoMappingWatcher } from "../bazel/bazel_repo_mapping";
 import { LanguageSupportFeature } from "../language_support/language_support_feature";
 import { migrateRenamedSettings } from "./settings_migration";
 
@@ -70,6 +71,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Watch for availability of bazel workspace
   registerBazelWorkspaceAvailabilityWatcher(context);
+
+  // Watch for MODULE.bazel/MODULE.bazel.lock changes to keep the external
+  // (e.g. local_path_override'd) module -> local path mapping up to date.
+  registerRepoMappingWatcher(context);
 
   // WorkspaceTreeFeature
   const workspaceTreeFeature = await WorkspaceTreeFeature.create(context);

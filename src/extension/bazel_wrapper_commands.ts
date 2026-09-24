@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import * as vscode from "vscode";
-import * as path from "path";
 
 import { IBazelCommandAdapter } from "../bazel/bazel_command";
 import { logError, logInfo, showInfoMessage, showUserMessage } from "./logger";
@@ -26,8 +25,9 @@ import {
 import {
   getBazelPackageFile,
   getBazelWorkspaceFolder,
-  getBazelPackageFolder,
   getBuildFileLineWithSourceFilePath,
+  getPackageLabelForFile,
+  canonicalizeLabel,
 } from "../bazel/bazel_utils";
 import {
   queryQuickPickTargets,
@@ -444,7 +444,7 @@ function copyLabelToClipboard(label: string): void {
 /**
  * Extracts label from cursor position in active editor.
  */
-function extractLabelFromCursor(): string | undefined {
+async function extractLabelFromCursor(): Promise<string | undefined> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     showInfoMessage("Please open a file to copy a label from.");
@@ -468,16 +468,15 @@ function extractLabelFromCursor(): string | undefined {
   // If the label doesn't start with //, prepend the current package
   if (!label.startsWith("//") && !label.startsWith("@")) {
     const filePath = document.uri.fsPath;
-    const packagePath = getBazelPackageFolder(filePath);
-    if (!packagePath) {
+    const workspaceRoot = getBazelWorkspaceFolder(filePath);
+    const buildFile = getBazelPackageFile(filePath);
+    if (!workspaceRoot || !buildFile) {
       logError("Not in a Bazel package.", true, "Filepath: %s", filePath);
       return undefined;
     }
 
-    // Get the package relative to workspace
-    const workspaceRoot = getBazelWorkspaceFolder(filePath);
-    const relativePackage = path.relative(workspaceRoot, packagePath) || ".";
-    label = `//${relativePackage}${label.startsWith(":") ? "" : ":"}${label}`;
+    const packageLabel = await getPackageLabelForFile(workspaceRoot, buildFile);
+    label = canonicalizeLabel(label, packageLabel);
   }
 
   // Handle the case where the target name is omitted
@@ -506,7 +505,7 @@ async function bazelCopyLabelToClipboard(
 ): Promise<void> {
   // Use Case 1: Command palette without target (adapter undefined) → extract from cursor
   if (adapter === undefined) {
-    const cursorLabel = extractLabelFromCursor();
+    const cursorLabel = await extractLabelFromCursor();
     if (cursorLabel) {
       copyLabelToClipboard(cursorLabel);
     }

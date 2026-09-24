@@ -57,7 +57,10 @@ describe("BazelCompletionItemProvider", () => {
 
     const position = new vscode.Position(0, 20);
 
-    const results = provider.provideCompletionItems(mockDocument, position);
+    const results = await provider.provideCompletionItems(
+      mockDocument,
+      position,
+    );
 
     assert.ok(results);
     assert.strictEqual(results.length, 2);
@@ -93,7 +96,7 @@ describe("BazelCompletionItemProvider", () => {
       lineAt: () => ({ text: '    srcs = ["//pkg1:' }),
     } as unknown as vscode.TextDocument;
 
-    const results = provider.provideCompletionItems(
+    const results = await provider.provideCompletionItems(
       nestedDocument,
       new vscode.Position(0, 20),
     );

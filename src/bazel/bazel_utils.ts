@@ -19,6 +19,10 @@ import { blaze_query } from "../protos";
 import { getPathsToIgnore, getWorkspacePath } from "../extension/configuration";
 import { logError } from "../extension/logger";
 import { BazelQuery } from "./bazel_query";
+import {
+  getRepoMapping,
+  resolvePackageLabelFromMapping,
+} from "./bazel_repo_mapping";
 
 /**
  * Get the package label for a build file.
@@ -44,6 +48,31 @@ export function getPackageLabelForBuildFile(
   relDirWithDoc = relDirWithDoc.replace(/\\/g, "/");
   // Turn the relative path into a package label
   return `//${relDirWithDoc}`;
+}
+
+/**
+ * Get the package label for a build file, aware of external Bazel modules
+ * (e.g. ones mounted via `local_path_override` in MODULE.bazel).
+ *
+ * If `buildFile` lives inside a resolved external module, returns the
+ * `@@canonicalName//pkg` form; otherwise falls back to
+ * `getPackageLabelForBuildFile`'s plain `//pkg` form. The external-module
+ * mapping is cached per workspace and only recomputed when that workspace's
+ * MODULE.bazel/MODULE.bazel.lock changes — see bazel_repo_mapping.ts.
+ *
+ * @param workspace The path to the workspace.
+ * @param buildFile The path to the build file.
+ * @returns The package label for the build file.
+ */
+export async function getPackageLabelForFile(
+  workspace: string,
+  buildFile: string,
+): Promise<string> {
+  const mapping = await getRepoMapping(workspace);
+  return (
+    resolvePackageLabelFromMapping(mapping, buildFile) ??
+    getPackageLabelForBuildFile(workspace, buildFile)
+  );
 }
 
 /**
@@ -89,7 +118,7 @@ export async function getTargetsForBuildFile(
   workspace: string,
   buildFile: string,
 ): Promise<blaze_query.QueryResult> {
-  const pkg = getPackageLabelForBuildFile(workspace, buildFile);
+  const pkg = await getPackageLabelForFile(workspace, buildFile);
   const queryResult = await new BazelQuery(
     bazelExecutable,
     workspace,
