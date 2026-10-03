@@ -14,7 +14,7 @@
 
 import * as vscode from "vscode";
 
-import { activateTaskProvider } from "../bazel";
+import { BazelWorkspaceInfo, activateTaskProvider } from "../bazel";
 import { BuildifierFeature } from "../buildifier";
 import { CodeLensFeature } from "../codelens/code_lens_feature";
 import {
@@ -30,7 +30,7 @@ import { registerBazelWorkspaceAvailabilityWatcher } from "../bazel/bazel_availa
 import { registerActiveBazelRoots } from "../bazel/active_bazel_roots";
 import { registerWorkspaceRootHint } from "../workspace-root/workspace_root_hint";
 import { registerWorkspaceRootStatus } from "../workspace-root/workspace_root_status";
-import { registerRepoMappingWatcher } from "../bazel/bazel_repo_mapping";
+import { registerRepoMappingCache } from "../bazel/bazel_repo_mapping";
 import { LanguageSupportFeature } from "../language_support/language_support_feature";
 import { logDeprecatedSettingsInUse } from "./settings_migration";
 
@@ -80,9 +80,13 @@ export async function activate(context: vscode.ExtensionContext) {
   registerActiveBazelRoots(context);
   registerWorkspaceRootStatus(context);
   registerWorkspaceRootHint(context);
-  // Watch for MODULE.bazel/MODULE.bazel.lock changes to keep the external
-  // (e.g. local_path_override'd) module -> local path mapping up to date.
-  registerRepoMappingWatcher(context);
+
+  // Resolve the external (e.g. local_path_override'd) module -> local path
+  // mapping in the background, and keep it up to date.
+  registerRepoMappingCache(
+    context,
+    BazelWorkspaceInfo.getAll().map((info) => info.bazelWorkspacePath),
+  );
 
   // WorkspaceTreeFeature
   const workspaceTreeFeature = await WorkspaceTreeFeature.create(context);

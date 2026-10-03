@@ -1,50 +1,55 @@
 import * as assert from "assert";
 import * as path from "path";
 
+import { getRepoMapping } from "../src/bazel/bazel_repo_mapping";
 import { getPackageLabelForFile } from "../src/bazel/bazel_utils";
 
 // End-to-end test against a real `local_path_override`: unlike
 // bazel_repo_mapping.test.ts (which stubs BazelInfo/BazelMod), this actually
-// shells out to `bazel mod graph` against the fixture below, confirming the
-// whole resolution pipeline (bazel_mod.ts + bazel_repo_mapping.ts +
-// getPackageLabelForFile) works against a real Bazel invocation, not just
-// our own assumptions about its output. This pays the same kind of real
-// subprocess cost that other fixture-based suites (e.g.
-// copy_label_to_clipboard.test.ts) already pay against test/bazel_workspace.
-describe("getPackageLabelForFile (real bazel mod graph)", () => {
-  const rootModulePath = path.join(
+// shells out to `bazel mod dump_repo_mapping` against test/bazel_workspace,
+// whose MODULE.bazel overrides the nested `overridden_mod_target` directory
+// and depends on bazel_skylib from the public registry.
+describe("getPackageLabelForFile (real bazel mod dump_repo_mapping)", () => {
+  const workspacePath = path.join(
     __dirname,
     "..",
     "..",
     "test",
     "bazel_workspace",
-    "module_with_override",
-  );
-  const overriddenModulePath = path.join(
-    __dirname,
-    "..",
-    "..",
-    "test",
-    "bazel_workspace",
-    "overridden_mod_target",
   );
 
   it("resolves a file inside the overridden module", async function () {
-    // First run resolves the module graph via a real `bazel mod graph`
-    // invocation, which can take a while depending on the local Bazel
-    // cache's warmth.
+    // The first run resolves the module graph, which can take a while
+    // depending on the local Bazel cache's warmth.
     this.timeout(60000);
 
-    const buildFile = path.join(overriddenModulePath, "BUILD");
-    const label = await getPackageLabelForFile(rootModulePath, buildFile);
+    const buildFile = path.join(
+      workspacePath,
+      "overridden_mod_target",
+      "BUILD",
+    );
+    const label = await getPackageLabelForFile(workspacePath, buildFile);
 
-    assert.strictEqual(label, "@@overridden_mod+//");
+    assert.strictEqual(label, "@overridden_mod//");
   });
 
   it("still resolves an ordinary file to a plain package label", async () => {
-    const buildFile = path.join(rootModulePath, "BUILD");
-    const label = await getPackageLabelForFile(rootModulePath, buildFile);
+    const buildFile = path.join(workspacePath, "pkg1", "BUILD");
+    const label = await getPackageLabelForFile(workspacePath, buildFile);
 
-    assert.strictEqual(label, "//");
+    assert.strictEqual(label, "//pkg1");
+  });
+
+  it("maps no other directory of the workspace", async () => {
+    // bazel_skylib may or may not appear, depending on whether a previous
+    // build fetched it, but never inside the workspace.
+    const mapping = await getRepoMapping(workspacePath);
+
+    assert.deepStrictEqual(
+      mapping
+        .filter((entry) => entry.localPath.startsWith(workspacePath))
+        .map((entry) => [entry.apparentName, entry.canonicalName]),
+      [["overridden_mod", "overridden_mod+"]],
+    );
   });
 });

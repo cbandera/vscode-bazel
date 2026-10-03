@@ -22,25 +22,35 @@ const execFile = util.promisify(child_process.execFile);
 /** Provides a promise-based API around the `bazel mod` command. */
 export class BazelMod extends BazelCommand {
   /**
-   * Runs `bazel mod graph --output=json` to force full bzlmod module
-   * resolution. The JSON output itself is discarded; as a side effect of
-   * resolution, Bazel populates `<output_base>/external/<canonical_repo>`
-   * symlinks for every resolved module (including `local_path_override`s),
-   * which is what callers actually read the repo mapping from (see
-   * bazel_repo_mapping.ts).
+   * Runs `bazel mod dump_repo_mapping ""` and returns the root module's repo
+   * mapping, i.e. apparent repo name -> canonical repo name (e.g.
+   * `{"my_dep": "my_dep+"}`). The main repo maps to `""`.
    *
-   * Throws if `bazel mod` is unavailable (old Bazel) or resolution fails
-   * (e.g. a non-bzlmod workspace); callers should catch and treat that as
-   * "no repo mapping available" rather than surfacing an error.
+   * Resolving the mapping only needs the module graph, which for
+   * `local_path_override`s materializes `<output_base>/external/<canonical>`
+   * as a symlink to the local path (see bazel_repo_mapping.ts). Unlike
+   * `bazel mod graph`, it does not fetch the source archives of registry
+   * modules (verified with Bazel 8.3.1 and 9.2.0).
+   *
+   * Throws if `bazel mod dump_repo_mapping` is unavailable (Bazel < 7.1),
+   * resolution fails (e.g. a non-bzlmod workspace) or `abortSignal` fires;
+   * callers should treat that as "no repo mapping available".
    */
-  public async graph(): Promise<void> {
-    await execFile(
+  public async dumpRepoMapping({
+    abortSignal,
+  }: { abortSignal?: AbortSignal } = {}): Promise<Record<string, string>> {
+    const execResult = await execFile(
       this.bazelExecutable,
-      this.execArgs(["graph", "--output=json"]),
+      this.execArgs(["dump_repo_mapping", ""]),
       {
         cwd: this.workingDirectory,
+        signal: abortSignal,
       },
     );
+    return JSON.parse(execResult.stdout.trim().split("\n")[0]) as Record<
+      string,
+      string
+    >;
   }
 
   protected bazelCommand(): string {

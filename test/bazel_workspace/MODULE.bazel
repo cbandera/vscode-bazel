@@ -1,1 +1,13 @@
 module(name = "module_workspace")
+
+# From the public registry (BCR). Resolving the repo mapping must not need to
+# download its source archive (see bazel_repo_mapping.ts).
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+
+# A local module nested inside this workspace: its files must get
+# `@overridden_mod//...` labels, not `//overridden_mod_target/...`.
+bazel_dep(name = "overridden_mod")
+local_path_override(
+    module_name = "overridden_mod",
+    path = "overridden_mod_target",
+)

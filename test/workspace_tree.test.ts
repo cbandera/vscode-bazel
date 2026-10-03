@@ -91,9 +91,6 @@ describe("Bazel Workspace Tree", function (this: Mocha.Suite) {
     await verifyTreeStructure(
       {
         "//buildifier": {},
-        "//module_with_override": {
-          ":x  (filegroup)": {},
-        },
         "//nested_module": {},
         "//overridden_mod_target": {
           ":y  (filegroup)": {},
@@ -125,9 +122,6 @@ describe("Bazel Workspace Tree", function (this: Mocha.Suite) {
     await verifyTreeStructure(
       {
         "//buildifier": {},
-        "//module_with_override": {
-          ":x  (filegroup)": {},
-        },
         "//nested_module": {},
         "//overridden_mod_target": {
           ":y  (filegroup)": {},
@@ -191,9 +185,6 @@ describe("Bazel Workspace Tree", function (this: Mocha.Suite) {
 
       await verifyTreeStructure(
         {
-          "//module_with_override": {
-            ":x  (filegroup)": {},
-          },
           "//overridden_mod_target": {
             ":y  (filegroup)": {},
           },

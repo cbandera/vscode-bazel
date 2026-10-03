@@ -475,13 +475,17 @@ describe("Bazel Utils: getPackageLabelForFile", () => {
 
   it("uses the mapping for a file inside a mapped module", async () => {
     const buildFile = path.join(packagePath, "BUILD");
-    sandbox
-      .stub(bazelRepoMapping, "getRepoMapping")
-      .resolves([{ canonicalName: "nested_mod+", localPath: packagePath }]);
+    sandbox.stub(bazelRepoMapping, "getRepoMapping").resolves([
+      {
+        canonicalName: "nested_mod+",
+        apparentName: "nested_mod",
+        localPath: packagePath,
+      },
+    ]);
 
     assert.strictEqual(
       await getPackageLabelForFile(workspacePath, buildFile),
-      "@@nested_mod+//",
+      "@nested_mod//",
     );
   });
 });

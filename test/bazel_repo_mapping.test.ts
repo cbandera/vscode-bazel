@@ -8,6 +8,7 @@ import { BazelInfo } from "../src/bazel/bazel_info";
 import { BazelMod } from "../src/bazel/bazel_mod";
 import {
   RepoMapping,
+  RepoMappingCache,
   getRepoMapping,
   invalidateRepoMapping,
   resolvePackageLabelFromMapping,
@@ -59,6 +60,22 @@ describe("resolvePackageLabelFromMapping", () => {
     );
   });
 
+  it("prefers the apparent name when the root module has one", () => {
+    assert.strictEqual(
+      resolvePackageLabelFromMapping(
+        [
+          {
+            canonicalName: "nested_mod+",
+            apparentName: "nested",
+            localPath: "/ws/external/nested_mod",
+          },
+        ],
+        "/ws/external/nested_mod/sub/BUILD",
+      ),
+      "@nested//sub",
+    );
+  });
+
   it("picks the longest-prefix match regardless of input order", () => {
     // Deliberately unsorted/reversed input: the function must sort for
     // itself rather than trusting caller order.
@@ -97,13 +114,13 @@ describe("getRepoMapping / invalidateRepoMapping", () => {
   it("skips spawning bazel when there is no MODULE.bazel", async () => {
     const workspace = await makeTempDir("vscode-bazel-repo-mapping-no-mod-");
     const getOne = sandbox.stub(BazelInfo.prototype, "getOne");
-    const graph = sandbox.stub(BazelMod.prototype, "graph");
+    const dumpRepoMapping = sandbox.stub(BazelMod.prototype, "dumpRepoMapping");
 
     const mapping = await getRepoMapping(workspace);
 
     assert.deepStrictEqual(mapping, []);
     assert.strictEqual(getOne.called, false);
-    assert.strictEqual(graph.called, false);
+    assert.strictEqual(dumpRepoMapping.called, false);
   });
 
   it("resolves external/ symlinks, excluding the self-symlink", async () => {
@@ -127,8 +144,18 @@ describe("getRepoMapping / invalidateRepoMapping", () => {
       "dir",
     );
 
+    await fs.symlink(
+      overrideTarget,
+      path.join(externalDir, "transitive_mod+"),
+      "dir",
+    );
+
     sandbox.stub(BazelInfo.prototype, "getOne").resolves(outputBase);
-    sandbox.stub(BazelMod.prototype, "graph").resolves();
+    sandbox.stub(BazelMod.prototype, "dumpRepoMapping").resolves({
+      "": "",
+      root: "",
+      nested: "nested_mod+",
+    });
 
     const mapping = await getRepoMapping(workspace);
 
@@ -139,17 +166,25 @@ describe("getRepoMapping / invalidateRepoMapping", () => {
       [
         {
           canonicalName: "nested_mod+",
+          apparentName: "nested",
+          localPath: await fs.realpath(overrideTarget),
+        },
+        {
+          canonicalName: "transitive_mod+",
+          apparentName: undefined,
           localPath: await fs.realpath(overrideTarget),
         },
       ],
     );
   });
 
-  it("treats a failing `bazel mod graph` as no external modules", async () => {
+  it("treats a failing dump_repo_mapping as no external modules", async () => {
     const workspace = await makeTempDir("vscode-bazel-repo-mapping-fail-mod-");
     await fs.writeFile(path.join(workspace, "MODULE.bazel"), "");
     sandbox.stub(BazelInfo.prototype, "getOne").resolves("/does/not/matter");
-    sandbox.stub(BazelMod.prototype, "graph").rejects(new Error("boom"));
+    sandbox
+      .stub(BazelMod.prototype, "dumpRepoMapping")
+      .rejects(new Error("boom"));
 
     const mapping = await getRepoMapping(workspace);
 
@@ -164,7 +199,7 @@ describe("getRepoMapping / invalidateRepoMapping", () => {
     const getOne = sandbox
       .stub(BazelInfo.prototype, "getOne")
       .rejects(new Error("no output_base in this test"));
-    sandbox.stub(BazelMod.prototype, "graph").resolves();
+    sandbox.stub(BazelMod.prototype, "dumpRepoMapping").resolves({});
 
     await Promise.all([getRepoMapping(workspace), getRepoMapping(workspace)]);
 
@@ -179,7 +214,7 @@ describe("getRepoMapping / invalidateRepoMapping", () => {
     const getOne = sandbox
       .stub(BazelInfo.prototype, "getOne")
       .rejects(new Error("no output_base in this test"));
-    sandbox.stub(BazelMod.prototype, "graph").resolves();
+    sandbox.stub(BazelMod.prototype, "dumpRepoMapping").resolves({});
 
     await getRepoMapping(workspace);
     assert.strictEqual(getOne.callCount, 1);
@@ -188,5 +223,57 @@ describe("getRepoMapping / invalidateRepoMapping", () => {
     await getRepoMapping(workspace);
 
     assert.strictEqual(getOne.callCount, 2);
+  });
+
+  it("aborts the resolution in flight on invalidate", async () => {
+    const workspace = await makeTempDir("vscode-bazel-repo-mapping-abort-");
+    await fs.writeFile(path.join(workspace, "MODULE.bazel"), "");
+    let seenSignal: AbortSignal | undefined;
+    const getOne = sandbox
+      .stub(BazelInfo.prototype, "getOne")
+      .callsFake((_key, { abortSignal } = {}) => {
+        seenSignal = abortSignal;
+        return new Promise((_resolve, reject) =>
+          abortSignal?.addEventListener("abort", () =>
+            reject(new Error("aborted")),
+          ),
+        );
+      });
+    const cache = new RepoMappingCache();
+
+    const first = cache.get(workspace);
+    cache.invalidate(workspace);
+
+    assert.strictEqual(seenSignal?.aborted, true);
+    assert.deepStrictEqual(await first, []);
+    // The aborted result is not served to later callers.
+    void cache.get(workspace);
+    assert.strictEqual(getOne.callCount, 2);
+    cache.dispose();
+  });
+
+  it("aborts the resolution when the caller's signal fires", async () => {
+    const workspace = await makeTempDir("vscode-bazel-repo-mapping-signal-");
+    await fs.writeFile(path.join(workspace, "MODULE.bazel"), "");
+    let seenSignal: AbortSignal | undefined;
+    sandbox
+      .stub(BazelInfo.prototype, "getOne")
+      .callsFake((_key, { abortSignal } = {}) => {
+        seenSignal = abortSignal;
+        return new Promise((_resolve, reject) =>
+          abortSignal?.addEventListener("abort", () =>
+            reject(new Error("aborted")),
+          ),
+        );
+      });
+    const cache = new RepoMappingCache();
+    const controller = new AbortController();
+
+    const mapping = cache.refresh(workspace, controller.signal);
+    controller.abort();
+
+    assert.strictEqual(seenSignal?.aborted, true);
+    assert.deepStrictEqual(await mapping, []);
+    cache.dispose();
   });
 });

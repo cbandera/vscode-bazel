@@ -25,14 +25,19 @@ export class BazelInfo extends BazelCommand {
    * Gets the info for a single key by running `bazel info <key>`.
    *
    * @param key The info key to query.
+   * @param options.abortSignal Kills the `bazel info` process when aborted.
    * @returns The output of `bazel info <key>`.
    */
-  public async getOne(key: string): Promise<string> {
+  public async getOne(
+    key: string,
+    { abortSignal }: { abortSignal?: AbortSignal } = {},
+  ): Promise<string> {
     const execResult = await execFile(
       this.bazelExecutable,
       this.execArgs([key]),
       {
         cwd: this.workingDirectory,
+        signal: abortSignal,
       },
     );
     return execResult.stdout.trim();

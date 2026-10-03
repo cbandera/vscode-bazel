@@ -55,10 +55,10 @@ export function getPackageLabelForBuildFile(
  * (e.g. ones mounted via `local_path_override` in MODULE.bazel).
  *
  * If `buildFile` lives inside a resolved external module, returns the
- * `@@canonicalName//pkg` form; otherwise falls back to
- * `getPackageLabelForBuildFile`'s plain `//pkg` form. The external-module
+ * `@apparentName//pkg` (or `@@canonicalName//pkg`) form; otherwise falls back
+ * to `getPackageLabelForBuildFile`'s plain `//pkg` form. The external-module
  * mapping is cached per workspace and only recomputed when that workspace's
- * MODULE.bazel/MODULE.bazel.lock changes — see bazel_repo_mapping.ts.
+ * root MODULE.bazel changes — see bazel_repo_mapping.ts.
  *
  * @param workspace The path to the workspace.
  * @param buildFile The path to the build file.
