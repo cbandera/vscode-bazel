@@ -15,7 +15,9 @@
 import * as vscode from "vscode";
 
 import { describeUnsupportedFile, locateFile } from "../bazel/bazel_utils";
+import { OPEN_WORKSPACE_PATH_SETTING_COMMAND } from "./workspace_root_status";
 
+export const OPEN_SETTING = "Open Setting";
 export const DONT_SHOW_AGAIN = "Don't Show Again";
 export const HINT_DISMISSED_KEY = "bazel.workspaceRootHint.dismissed";
 
@@ -43,8 +45,9 @@ export function getWorkspaceRootHint(fsPath: string): string | undefined {
 
 /**
  * Explains to users whose files belong to a Bazel workspace other than their
- * folder's active root how to work with it. Only informs; never changes any
- * setting or the workspace. Shown at most once per Bazel workspace and session,
+ * folder's active root how to work with it. Only informs (and offers to open
+ * the `bazel.workspace.path` setting); never changes any setting or the
+ * workspace. Shown at most once per Bazel workspace and session,
  * and never again once dismissed for this VS Code workspace.
  */
 export function registerWorkspaceRootHint(
@@ -74,9 +77,13 @@ export function registerWorkspaceRootHint(
     }
     shown.add(location.workspace);
     void vscode.window
-      .showInformationMessage(hint, DONT_SHOW_AGAIN)
+      .showInformationMessage(hint, OPEN_SETTING, DONT_SHOW_AGAIN)
       .then((action) => {
-        if (action === DONT_SHOW_AGAIN) {
+        if (action === OPEN_SETTING) {
+          void vscode.commands.executeCommand(
+            OPEN_WORKSPACE_PATH_SETTING_COMMAND,
+          );
+        } else if (action === DONT_SHOW_AGAIN) {
           void context.workspaceState.update(HINT_DISMISSED_KEY, true);
         }
       });
