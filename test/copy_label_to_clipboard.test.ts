@@ -13,6 +13,8 @@
 // limitations under the License.
 
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as assert from "assert";
 import * as sinon from "sinon";
@@ -165,6 +167,46 @@ describe("Copy Label To Clipboard", () => {
           (message) =>
             message.includes(workspacePath) &&
             message.includes("not the active Bazel workspace"),
+        ),
+        messages.join("\n"),
+      );
+    });
+  });
+
+  describe("in no Bazel workspace", () => {
+    let sandbox: sinon.SinonSandbox;
+    let directory: string;
+
+    beforeEach(() => {
+      sandbox = sinon.createSandbox();
+      directory = fs.mkdtempSync(path.join(os.tmpdir(), "vscode-bazel-"));
+    });
+
+    afterEach(async () => {
+      sandbox.restore();
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+      fs.rmSync(directory, { recursive: true, force: true });
+    });
+
+    it("copies nothing and says there is no Bazel workspace", async () => {
+      const showInfoMessage = sandbox
+        .stub(vscode.window, "showInformationMessage")
+        .resolves(undefined);
+      const buildFile = path.join(directory, "BUILD");
+      fs.writeFileSync(buildFile, 'deps = ["//pkg:lib"]\n');
+      const editor = await openSourceFile(buildFile);
+      const cursorPos = new vscode.Position(0, 12);
+      setCursorInEditor(editor, cursorPos, cursorPos);
+
+      await vscode.commands.executeCommand("bazel.copyLabelToClipboard");
+
+      assert.strictEqual(await vscode.env.clipboard.readText(), "");
+      const messages = showInfoMessage
+        .getCalls()
+        .map((call) => call.args[0] as string);
+      assert.ok(
+        messages.some((message) =>
+          message.includes("not in any Bazel workspace"),
         ),
         messages.join("\n"),
       );

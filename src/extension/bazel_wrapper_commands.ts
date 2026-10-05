@@ -28,7 +28,7 @@ import {
   getBazelWorkspaceFolder,
   getBazelPackageFolder,
   getBuildFileLineWithSourceFilePath,
-  notifyIfForeignFile,
+  notifyIfUnsupported,
 } from "../bazel/bazel_utils";
 import {
   queryQuickPickTargets,
@@ -456,7 +456,7 @@ function extractLabelFromCursor(): string | undefined {
   // Even absolute labels in such a file refer to another repository.
   if (
     document.uri.scheme === "file" &&
-    notifyIfForeignFile(document.uri.fsPath)
+    notifyIfUnsupported(document.uri.fsPath)
   ) {
     return undefined;
   }

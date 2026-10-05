@@ -10,8 +10,8 @@ import {
   getTargetNameAtBuildFileLocation,
   getBazelWorkspaceFolder,
   getBazelWorkspaceRelativePath,
-  getForeignBazelWorkspace,
-  notifyIfForeignFile,
+  locateFile,
+  notifyIfUnsupported,
   resolveActiveBazelRoot,
   canonicalizeLabel,
 } from "../src/bazel/bazel_utils";
@@ -275,8 +275,6 @@ describe("Bazel Utils: getBazelWorkspaceFolder", () => {
 });
 
 describe("Bazel Utils: workspace model", () => {
-  let sandbox: sinon.SinonSandbox;
-  let temporaryDirectories: string[];
   const nestedModulePath = path.join(workspacePath, "nested_module");
 
   function testWorkspaceFolder(): vscode.WorkspaceFolder {
@@ -293,17 +291,8 @@ describe("Bazel Utils: workspace model", () => {
       .update("path", configuredPath, vscode.ConfigurationTarget.Workspace);
   }
 
-  beforeEach(() => {
-    sandbox = sinon.createSandbox();
-    temporaryDirectories = [];
-  });
-
   afterEach(async () => {
-    sandbox.restore();
     await pin(undefined);
-    for (const directory of temporaryDirectories) {
-      fs.rmSync(directory, { recursive: true, force: true });
-    }
   });
 
   it("ignores a nested marker file without a pin", () => {
@@ -331,44 +320,178 @@ describe("Bazel Utils: workspace model", () => {
     // Outside the pinned root: no fallback to the nearest marker file.
     const outsideFile = path.join(workspacePath, "pkg1", "BUILD");
     assert.strictEqual(getBazelWorkspaceFolder(outsideFile), undefined);
-    assert.strictEqual(getForeignBazelWorkspace(outsideFile), workspacePath);
   });
+});
 
-  it("treats a file outside every folder as foreign", () => {
-    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "vscode-bazel-repo-"));
-    temporaryDirectories.push(repo);
-    fs.writeFileSync(path.join(repo, "MODULE.bazel"), "");
-    fs.mkdirSync(path.join(repo, "lib"));
-    const file = path.join(repo, "lib", "paths.bzl");
+describe("Bazel Utils: locateFile", () => {
+  let sandbox: sinon.SinonSandbox;
+  let temporaryDirectories: string[];
+  const nestedModulePath = path.join(workspacePath, "nested_module");
+  const rootBuildFile = path.join(workspacePath, "pkg1", "BUILD");
+
+  async function pin(configuredPath: string | undefined): Promise<void> {
+    await vscode.workspace
+      .getConfiguration("bazel.workspace")
+      .update("path", configuredPath, vscode.ConfigurationTarget.Workspace);
+  }
+
+  async function ignore(pathsToIgnore: string[] | undefined): Promise<void> {
+    await vscode.workspace
+      .getConfiguration("bazel.workspace")
+      .update(
+        "pathsToIgnore",
+        pathsToIgnore,
+        vscode.ConfigurationTarget.Workspace,
+      );
+  }
+
+  /** Creates a file outside every folder, optionally in a Bazel workspace. */
+  function createOutsideFile(withMarker: boolean): {
+    directory: string;
+    file: string;
+  } {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "vscode-bazel-outside-"),
+    );
+    temporaryDirectories.push(directory);
+    if (withMarker) {
+      fs.writeFileSync(path.join(directory, "MODULE.bazel"), "");
+    }
+    fs.mkdirSync(path.join(directory, "lib"));
+    const file = path.join(directory, "lib", "paths.bzl");
     fs.writeFileSync(file, "");
+    return { directory, file };
+  }
 
-    assert.strictEqual(getBazelWorkspaceFolder(file), undefined);
-    assert.strictEqual(getForeignBazelWorkspace(file), repo);
+  beforeEach(() => {
+    sandbox = sinon.createSandbox();
+    temporaryDirectories = [];
   });
 
-  it("has no foreign workspace for a file in the active root", () => {
-    const file = path.join(workspacePath, "pkg1", "BUILD");
-    assert.strictEqual(getForeignBazelWorkspace(file), undefined);
+  afterEach(async () => {
+    sandbox.restore();
+    await pin(undefined);
+    await ignore(undefined);
+    for (const directory of temporaryDirectories) {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 
-  it("notifies only for foreign files", async () => {
+  it("locates a file in the active root", () => {
+    const location = locateFile(rootBuildFile);
+
+    assert.strictEqual(location.kind, "activeRoot");
+    assert.deepStrictEqual(location.root, {
+      path: workspacePath,
+      pinned: false,
+    });
+    assert.strictEqual(location.folder.uri.fsPath, workspacePath);
+  });
+
+  it("locates a file in another Bazel workspace", async () => {
     await pin("nested_module");
-    const showInfoMessage = sandbox
-      .stub(logger, "showInfoMessage")
-      .resolves(undefined);
 
-    assert.strictEqual(
-      notifyIfForeignFile(path.join(nestedModulePath, "BUILD")),
-      false,
-    );
-    assert.strictEqual(showInfoMessage.called, false);
+    const location = locateFile(rootBuildFile);
 
-    assert.strictEqual(
-      notifyIfForeignFile(path.join(workspacePath, "pkg1", "BUILD")),
-      true,
-    );
-    assert.strictEqual(showInfoMessage.callCount, 1);
-    assert.ok(showInfoMessage.firstCall.args[0].includes(workspacePath));
+    assert.strictEqual(location.kind, "inactiveWorkspace");
+    assert.strictEqual(location.workspace, workspacePath);
+    assert.strictEqual(location.root?.path, nestedModulePath);
+    assert.strictEqual(location.folder?.uri.fsPath, workspacePath);
+  });
+
+  it("locates a file outside every folder in a Bazel workspace", () => {
+    const { directory, file } = createOutsideFile(true);
+
+    const location = locateFile(file);
+
+    assert.strictEqual(location.kind, "inactiveWorkspace");
+    assert.strictEqual(location.workspace, directory);
+    assert.strictEqual(location.folder, undefined);
+    assert.strictEqual(location.root, undefined);
+  });
+
+  it("locates a file outside every folder in no Bazel workspace", () => {
+    const { file } = createOutsideFile(false);
+
+    const location = locateFile(file);
+
+    assert.strictEqual(location.kind, "noWorkspace");
+    assert.strictEqual(location.folder, undefined);
+    assert.strictEqual(location.root, undefined);
+  });
+
+  it("locates a file in a folder but in no Bazel workspace", async () => {
+    // Simulate opening the repository's test/ directory, which has no
+    // workspace marker file at or above it, as the VS Code folder.
+    const testDirectory = path.dirname(workspacePath);
+    sandbox.stub(vscode.workspace, "getWorkspaceFolder").returns({
+      uri: vscode.Uri.file(testDirectory),
+      name: "test",
+      index: 0,
+    });
+    await pin(workspacePath);
+
+    const location = locateFile(path.join(testDirectory, "BUILD"));
+
+    assert.strictEqual(location.kind, "noWorkspace");
+    assert.deepStrictEqual(location.root, {
+      path: workspacePath,
+      pinned: true,
+    });
+    assert.strictEqual(location.folder?.uri.fsPath, testDirectory);
+  });
+
+  it("locates an ignored file", async () => {
+    await ignore(["pkg1"]);
+
+    assert.strictEqual(locateFile(rootBuildFile).kind, "ignored");
+    assert.strictEqual(getBazelWorkspaceFolder(rootBuildFile), undefined);
+  });
+
+  describe("notifyIfUnsupported", () => {
+    let showInfoMessage: sinon.SinonStub;
+
+    beforeEach(() => {
+      showInfoMessage = sandbox
+        .stub(logger, "showInfoMessage")
+        .resolves(undefined);
+    });
+
+    function notifiedMessage(fsPath: string): string {
+      assert.strictEqual(notifyIfUnsupported(fsPath), true);
+      assert.strictEqual(showInfoMessage.callCount, 1);
+      return showInfoMessage.firstCall.args[0] as string;
+    }
+
+    it("stays silent for a file in the active root", () => {
+      assert.strictEqual(notifyIfUnsupported(rootBuildFile), false);
+      assert.strictEqual(showInfoMessage.called, false);
+    });
+
+    it("names both workspaces for another Bazel workspace", async () => {
+      await pin("nested_module");
+
+      const message = notifiedMessage(rootBuildFile);
+
+      assert.ok(message.includes(`Bazel workspace at ${workspacePath}`));
+      assert.ok(message.includes("not the active Bazel workspace"));
+      assert.ok(message.includes(nestedModulePath), message);
+    });
+
+    it("says there is no Bazel workspace", () => {
+      const message = notifiedMessage(createOutsideFile(false).file);
+
+      assert.ok(message.includes("not in any Bazel workspace"), message);
+      assert.ok(message.includes("outside every VS Code"), message);
+    });
+
+    it("names the setting for an ignored file", async () => {
+      await ignore(["pkg1"]);
+
+      const message = notifiedMessage(rootBuildFile);
+
+      assert.ok(message.includes("bazel.workspace.pathsToIgnore"), message);
+    });
   });
 });
 

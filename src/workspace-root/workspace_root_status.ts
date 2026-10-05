@@ -17,7 +17,8 @@ import * as vscode from "vscode";
 
 import { onDidChangeActiveBazelRoot } from "../bazel/active_bazel_roots";
 import {
-  getForeignBazelWorkspace,
+  describeUnsupportedFile,
+  locateFile,
   resolveActiveBazelRoot,
 } from "../bazel/bazel_utils";
 
@@ -46,16 +47,17 @@ export function describeWorkspaceRoot(
   }
   const folder = vscode.workspace.getWorkspaceFolder(document.uri);
   const root = folder ? resolveActiveBazelRoot(folder) : undefined;
-  const foreignWorkspace = getForeignBazelWorkspace(document.uri.fsPath);
+  const location = locateFile(document.uri.fsPath);
+  // Empty only for a file in the active root.
+  const unsupported = describeUnsupportedFile(location) ?? "";
 
   if (!folder || !root) {
     return {
       text: "$(circle-slash) Bazel",
       tooltip: folder
         ? `No Bazel workspace found for folder "${folder.name}". ` +
-          "Set bazel.workspace.path to select one."
-        : "This file is outside every VS Code workspace folder. " +
-          "Bazel features are unavailable for it.",
+          `Set bazel.workspace.path to select one.\n\n${unsupported}`
+        : unsupported,
     };
   }
 
@@ -63,19 +65,18 @@ export function describeWorkspaceRoot(
     ? "pinned by bazel.workspace.path"
     : "detected from the folder";
   const outside =
-    foreignWorkspace !== undefined
-      ? `\n\nThis file is outside it (it belongs to ${foreignWorkspace}). ` +
-        "Bazel features are unavailable for it."
-      : "";
+    location.kind === "inactiveWorkspace" || location.kind === "noWorkspace";
   let icon = "";
-  if (foreignWorkspace !== undefined) {
+  if (outside) {
     icon = "$(warning) ";
   } else if (root.pinned) {
     icon = "$(pin) ";
   }
   return {
     text: `${icon}Bazel: ${path.basename(root.path)}`,
-    tooltip: `Active Bazel workspace: ${root.path} (${origin})${outside}`,
+    tooltip:
+      `Active Bazel workspace: ${root.path} (${origin})` +
+      (unsupported && `\n\n${unsupported}`),
   };
 }
 

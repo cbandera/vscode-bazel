@@ -27,7 +27,6 @@ import {
   getBuildFileLineWithSourceFilePath,
   getPackageLabelForBuildFile,
   getTargetNameAtBuildFileLocation,
-  notifyIfForeignFile,
 } from "./bazel_utils";
 import { logError } from "../extension/logger";
 
@@ -277,9 +276,6 @@ export function showDynamicQuickPick({
   const initialPattern = getQueryExpression();
   // But if we can guess the label of interest from the current cursor position, we use it to improve the starting point
   const activeDocument = vscode.window.activeTextEditor?.document;
-  if (activeDocument?.uri.scheme === "file") {
-    notifyIfForeignFile(activeDocument.uri.fsPath);
-  }
   const guessedLabelOfInterest = guessLabelOfInterest(
     activeDocument?.uri.fsPath,
     vscode.window.activeTextEditor?.selection.active.line,

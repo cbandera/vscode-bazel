@@ -14,10 +14,7 @@
 
 import * as vscode from "vscode";
 
-import {
-  getActiveBazelRoot,
-  getForeignBazelWorkspace,
-} from "../bazel/bazel_utils";
+import { describeUnsupportedFile, locateFile } from "../bazel/bazel_utils";
 
 export const DONT_SHOW_AGAIN = "Don't Show Again";
 export const HINT_DISMISSED_KEY = "bazel.workspaceRootHint.dismissed";
@@ -33,24 +30,14 @@ export const HINT_DISMISSED_KEY = "bazel.workspaceRootHint.dismissed";
  * @returns The message, or undefined if the file needs no hint.
  */
 export function getWorkspaceRootHint(fsPath: string): string | undefined {
-  const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(fsPath));
-  if (!folder) {
+  const location = locateFile(fsPath);
+  if (location.kind !== "inactiveWorkspace" || !location.folder) {
     return undefined;
   }
-  const foreignWorkspace = getForeignBazelWorkspace(fsPath);
-  if (foreignWorkspace === undefined) {
-    return undefined;
-  }
-  const root = getActiveBazelRoot(folder);
-  const active = root
-    ? `uses the Bazel workspace at ${root}`
-    : "has no Bazel workspace";
   return (
-    `This file belongs to the Bazel workspace at ${foreignWorkspace}, but ` +
-    `the VS Code folder "${folder.name}" ${active}, so Bazel features are ` +
-    "unavailable for it. To use them, set bazel.workspace.path for this " +
-    `folder, or add ${foreignWorkspace} as a folder of a multi-root ` +
-    "workspace."
+    `${describeUnsupportedFile(location)} To use them, set ` +
+    "bazel.workspace.path for this folder, or add " +
+    `${location.workspace} as a folder of a multi-root workspace.`
   );
 }
 
@@ -74,15 +61,18 @@ export function registerWorkspaceRootHint(
       return;
     }
     const fsPath = editor.document.uri.fsPath;
-    const foreignWorkspace = getForeignBazelWorkspace(fsPath);
-    if (foreignWorkspace === undefined || shown.has(foreignWorkspace)) {
+    const location = locateFile(fsPath);
+    if (
+      location.kind !== "inactiveWorkspace" ||
+      shown.has(location.workspace)
+    ) {
       return;
     }
     const hint = getWorkspaceRootHint(fsPath);
     if (hint === undefined) {
       return;
     }
-    shown.add(foreignWorkspace);
+    shown.add(location.workspace);
     void vscode.window
       .showInformationMessage(hint, DONT_SHOW_AGAIN)
       .then((action) => {

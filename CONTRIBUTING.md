@@ -118,9 +118,11 @@ Every feature must agree on which Bazel workspace a file belongs to
   `@repo//pkg` labels, wherever the override lives (work in progress, #416).
 - Every other file (e.g. one in Bazel's repository cache reached via Go to
   Definition) is unsupported: never spawn Bazel for it and never compute a
-  label for it. Passive features (CodeLens, symbols, definitions, completion)
-  stay silent; explicit commands (e.g. Copy Label) tell the user why they did
-  nothing (`notifyIfForeignFile`).
+  label for it. `locateFile(file)` tells which case applies: another Bazel
+  workspace, no Bazel workspace, or ignored by `bazel.workspace.pathsToIgnore`.
+  Passive features (CodeLens, symbols, definitions, completion, the target
+  quick pick's prefill) stay silent; explicit commands (e.g. Copy Label) tell
+  the user why they did nothing (`notifyIfUnsupported`).
 - Once the external-module mapping for #416 exists, don't call a file
   unsupported while it is still resolving.
 - Never write to the user's settings to "fix" their workspace setup; point
