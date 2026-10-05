@@ -48,13 +48,57 @@ function describeRoot(
 }
 
 /**
+ * How long to wait after the last trigger before re-resolving the roots, so
+ * that bursts (e.g. a `git checkout`, or a setting changed and reverted)
+ * cost at most one round of refreshes.
+ */
+export const ROOT_CHANGE_DELAY_MS = 500;
+
+/**
+ * Runs `task` `delayMs` after the last `schedule()` call.
+ *
+ * TODO(#712): replace with `CoalescingRunner` from
+ * `src/extension/coalescing_runner.ts` once merged, which has the same
+ * interface, and use its `BUILD_FILE_CHANGE_DELAY_MS` instead of
+ * `ROOT_CHANGE_DELAY_MS`, i.e.
+ * `new CoalescingRunner(BUILD_FILE_CHANGE_DELAY_MS, () => this.update())`.
+ */
+class DebouncedRunner implements vscode.Disposable {
+  private timeout: NodeJS.Timeout | undefined;
+
+  constructor(
+    private readonly delayMs: number,
+    private readonly task: (signal: AbortSignal) => void,
+  ) {}
+
+  /** Requests a run of the task, `delayMs` after the last request. */
+  public schedule(): void {
+    clearTimeout(this.timeout);
+    this.timeout = setTimeout(
+      () => this.task(new AbortController().signal),
+      this.delayMs,
+    );
+  }
+
+  /** Cancels any pending run. */
+  public dispose(): void {
+    clearTimeout(this.timeout);
+  }
+}
+
+interface TrackedFolder {
+  readonly folder: vscode.WorkspaceFolder;
+  readonly root: ActiveBazelRoot | undefined;
+}
+
+/**
  * Keeps track of the active Bazel root of every VS Code workspace folder (see
  * `resolveActiveBazelRoot`) and fires an event whenever one changes.
  *
- * Re-resolves on changes to `bazel.workspace.path` and
- * `bazel.workspace.pathsToIgnore`, to the set of workspace folders, and to
- * marker files directly in a folder root. Marker files above a folder root
- * are not watched.
+ * Re-resolves `ROOT_CHANGE_DELAY_MS` after the last change to
+ * `bazel.workspace.path` or `bazel.workspace.pathsToIgnore`, to the set of
+ * workspace folders, or to marker files directly in a folder root. Marker
+ * files above a folder root are not watched.
  */
 export class ActiveBazelRoots implements vscode.Disposable {
   private readonly onDidChangeEmitter =
@@ -62,13 +106,16 @@ export class ActiveBazelRoots implements vscode.Disposable {
   /** Fires once per folder whose active root changed. */
   public readonly onDidChange = this.onDidChangeEmitter.event;
 
-  private readonly roots = new Map<string, ActiveBazelRoot | undefined>();
+  private readonly folders = new Map<string, TrackedFolder>();
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly updater = new DebouncedRunner(ROOT_CHANGE_DELAY_MS, () =>
+    this.update(),
+  );
 
   constructor() {
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       const root = resolveActiveBazelRoot(folder);
-      this.roots.set(folder.uri.toString(), root);
+      this.folders.set(folder.uri.toString(), { folder, root });
       logInfo(describeRoot(folder, root));
     }
 
@@ -81,47 +128,55 @@ export class ActiveBazelRoots implements vscode.Disposable {
     this.disposables.push(
       this.onDidChangeEmitter,
       markerWatcher,
-      markerWatcher.onDidCreate(() => this.update()),
-      markerWatcher.onDidDelete(() => this.update()),
+      markerWatcher.onDidCreate(() => this.updater.schedule()),
+      markerWatcher.onDidDelete(() => this.updater.schedule()),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (
           affectsRenamedSetting(e, "bazel.workspace.path") ||
           affectsRenamedSetting(e, "bazel.workspace.pathsToIgnore")
         ) {
-          this.update();
+          this.updater.schedule();
         }
       }),
-      vscode.workspace.onDidChangeWorkspaceFolders((e) => {
-        for (const folder of e.removed) {
-          const previous = this.roots.get(folder.uri.toString());
-          this.roots.delete(folder.uri.toString());
-          this.onDidChangeEmitter.fire({
-            folder,
-            previous,
-            current: undefined,
-          });
-        }
-        this.update();
-      }),
+      vscode.workspace.onDidChangeWorkspaceFolders(() =>
+        this.updater.schedule(),
+      ),
     );
   }
 
   /** Re-resolves every folder's root and fires for those that changed. */
   public update(): void {
+    const current = new Set<string>();
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       const key = folder.uri.toString();
-      const previous = this.roots.get(key);
-      const current = resolveActiveBazelRoot(folder);
-      if (this.roots.has(key) && sameRoot(previous, current)) {
+      current.add(key);
+      const tracked = this.folders.get(key);
+      const root = resolveActiveBazelRoot(folder);
+      if (tracked && sameRoot(tracked.root, root)) {
         continue;
       }
-      this.roots.set(key, current);
-      logInfo(describeRoot(folder, current));
-      this.onDidChangeEmitter.fire({ folder, previous, current });
+      this.folders.set(key, { folder, root });
+      logInfo(describeRoot(folder, root));
+      this.onDidChangeEmitter.fire({
+        folder,
+        previous: tracked?.root,
+        current: root,
+      });
+    }
+    for (const [key, tracked] of this.folders) {
+      if (!current.has(key)) {
+        this.folders.delete(key);
+        this.onDidChangeEmitter.fire({
+          folder: tracked.folder,
+          previous: tracked.root,
+          current: undefined,
+        });
+      }
     }
   }
 
   public dispose(): void {
+    this.updater.dispose();
     for (const disposable of this.disposables) {
       disposable.dispose();
     }

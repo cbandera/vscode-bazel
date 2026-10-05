@@ -42,7 +42,9 @@ export class CodeLensFeature extends BaseExtensionFeature {
       this.disposables,
     );
 
-    // The labels and the Bazel root behind every lens may change
+    // The labels and the Bazel root behind every lens may change.
+    // TODO(#712): go through the same CoalescingRunner as the BUILD file
+    // watcher, so both kinds of change cost one refresh.
     this.disposables.push(
       onDidChangeActiveBazelRoot(() => codelensProvider.refresh()),
     );

@@ -5,7 +5,12 @@ import * as vscode from "vscode";
 import {
   ActiveBazelRootChange,
   ActiveBazelRoots,
+  ROOT_CHANGE_DELAY_MS,
 } from "../src/bazel/active_bazel_roots";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 describe("ActiveBazelRoots", () => {
   const workspacePath = path.join(
@@ -52,6 +57,25 @@ describe("ActiveBazelRoots", () => {
 
   it("does not fire when nothing changed", () => {
     roots.update();
+
+    assert.deepStrictEqual(changes, []);
+  });
+
+  it("re-resolves on its own after a setting change", async () => {
+    await pin("nested_module");
+    await sleep(ROOT_CHANGE_DELAY_MS + 200);
+
+    assert.strictEqual(changes.length, 1);
+    assert.strictEqual(
+      changes[0].current?.path,
+      path.join(workspacePath, "nested_module"),
+    );
+  });
+
+  it("ignores a setting change reverted within the delay", async () => {
+    await pin("nested_module");
+    await pin(undefined);
+    await sleep(ROOT_CHANGE_DELAY_MS + 200);
 
     assert.deepStrictEqual(changes, []);
   });
