@@ -362,7 +362,9 @@ export function getBazelWorkspaceFolder(fsPath: string): string | undefined {
 /**
  * Explains why Bazel features are unavailable for a file that isn't in its
  * folder's active Bazel root, stating whether it belongs to another Bazel
- * workspace or to none at all.
+ * workspace or to none at all. The message leads with the fact that the file
+ * doesn't belong to the active Bazel workspace, as notifications only show
+ * their beginning until expanded.
  *
  * @param location The file's location, see `locateFile`.
  * @returns The explanation, or undefined for a file in the active root.
@@ -373,37 +375,25 @@ export function describeUnsupportedFile(
   if (location.kind === "activeRoot") {
     return undefined;
   }
+  const lead = "This file does not belong to the active Bazel workspace";
+  const unavailable = "Bazel features are unavailable for it.";
   if (location.kind === "ignored") {
-    return (
-      "This file matches bazel.workspace.pathsToIgnore, so Bazel features " +
-      "are unavailable for it."
-    );
+    return `${lead}: it matches bazel.workspace.pathsToIgnore. ${unavailable}`;
   }
   const { folder, root } = location;
-  const inactive = location.kind === "inactiveWorkspace";
-  let reason: string;
+  let activeWorkspace: string;
   if (!folder) {
-    reason = inactive
-      ? `This file belongs to the Bazel workspace at ${location.workspace}, ` +
-        "but it is outside every VS Code workspace folder."
-      : "This file is not in any Bazel workspace, and it is outside every " +
-        "VS Code workspace folder.";
+    activeWorkspace = `${lead}: it is outside every VS Code workspace folder.`;
   } else if (!root) {
-    reason = inactive
-      ? `This file belongs to the Bazel workspace at ${location.workspace}, ` +
-        `but its VS Code folder "${folder.name}" has no active Bazel ` +
-        "workspace."
-      : "This file is not in any Bazel workspace, and its VS Code folder " +
-        `"${folder.name}" has no active Bazel workspace either.`;
+    activeWorkspace = `${lead}: its VS Code folder "${folder.name}" has none.`;
   } else {
-    reason = inactive
-      ? `This file belongs to the Bazel workspace at ${location.workspace}, ` +
-        "which is not the active Bazel workspace of its VS Code folder " +
-        `"${folder.name}" (${root.path}).`
-      : "This file is not in any Bazel workspace. The active Bazel workspace " +
-        `of its VS Code folder "${folder.name}" is ${root.path}.`;
+    activeWorkspace = `${lead} (${root.path}) of its VS Code folder "${folder.name}".`;
   }
-  return `${reason} Bazel features are unavailable for it.`;
+  const ownWorkspace =
+    location.kind === "inactiveWorkspace"
+      ? `It belongs to the Bazel workspace at ${location.workspace}.`
+      : "It is not in any Bazel workspace.";
+  return `${activeWorkspace} ${ownWorkspace} ${unavailable}`;
 }
 
 /**

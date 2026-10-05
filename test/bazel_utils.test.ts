@@ -460,7 +460,15 @@ describe("Bazel Utils: locateFile", () => {
     function notifiedMessage(fsPath: string): string {
       assert.strictEqual(notifyIfUnsupported(fsPath), true);
       assert.strictEqual(showInfoMessage.callCount, 1);
-      return showInfoMessage.firstCall.args[0] as string;
+      const message = showInfoMessage.firstCall.args[0] as string;
+      // Notifications only show their beginning until expanded.
+      assert.ok(
+        message.startsWith(
+          "This file does not belong to the active Bazel workspace",
+        ),
+        message,
+      );
+      return message;
     }
 
     it("stays silent for a file in the active root", () => {
@@ -474,7 +482,9 @@ describe("Bazel Utils: locateFile", () => {
       const message = notifiedMessage(rootBuildFile);
 
       assert.ok(message.includes(`Bazel workspace at ${workspacePath}`));
-      assert.ok(message.includes("not the active Bazel workspace"));
+      assert.ok(
+        message.includes("does not belong to the active Bazel workspace"),
+      );
       assert.ok(message.includes(nestedModulePath), message);
     });
 

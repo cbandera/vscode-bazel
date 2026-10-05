@@ -42,17 +42,14 @@ setting.
 
 The extension uses exactly one Bazel root per VS Code workspace folder. By
 default, it searches upward from the folder for a `MODULE.bazel`,
-`REPO.bazel`, `WORKSPACE.bazel`, or `WORKSPACE` file. Marker files in
-subdirectories of the folder are ignored: from the root, Bazel treats those
-directories as ordinary packages.
+`REPO.bazel`, `WORKSPACE.bazel`, or `WORKSPACE` file.
 
 If the Bazel root is nested below the folder opened in VS Code, or the search
 selects the wrong root, set `bazel.workspace.path` to the Bazel root. The value
 can be an absolute path or a path relative to the VS Code workspace folder, and
 applies to every file in that folder.
 
-Files outside the active root (for example a dependency's file in Bazel's
-repository cache, reached via Go to Definition) are not supported: CodeLens,
+Files outside the active root are not supported: CodeLens,
 symbols, Go to Definition and completion stay inactive there, and commands like
 **Copy Label to Clipboard** explain why they do nothing.
 

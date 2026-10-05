@@ -59,7 +59,9 @@ describe("Workspace root status and hint", () => {
 
     assert.strictEqual(status?.text, "$(warning) Bazel: nested_module");
     assert.ok(status?.tooltip.includes(`Bazel workspace at ${workspacePath}`));
-    assert.ok(status?.tooltip.includes("not the active Bazel workspace"));
+    assert.ok(
+      status?.tooltip.includes("does not belong to the active Bazel workspace"),
+    );
     assert.ok(hint?.includes(`Bazel workspace at ${workspacePath}`));
     assert.ok(hint?.includes("bazel.workspace.path"));
     assert.ok(hint?.includes("multi-root"));

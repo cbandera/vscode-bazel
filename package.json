@@ -489,6 +489,10 @@
         "menus": {
             "commandPalette": [
                 {
+                    "command": "bazel.openWorkspacePathSetting",
+                    "when": "false"
+                },
+                {
                     "command": "bazel.copyLabelToClipboard",
                     "when": "bazel.haveWorkspace"
                 },

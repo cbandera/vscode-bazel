@@ -166,7 +166,7 @@ describe("Copy Label To Clipboard", () => {
         messages.some(
           (message) =>
             message.includes(workspacePath) &&
-            message.includes("not the active Bazel workspace"),
+            message.includes("does not belong to the active Bazel workspace"),
         ),
         messages.join("\n"),
       );
